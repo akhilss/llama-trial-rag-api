@@ -5,7 +5,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_community.llms import Ollama
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
-from langchain.document_loaders import DirectoryLoader, TextLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader
 
 class RAGService:
     def __init__(self, base_url: str = "http://localhost:11434", model_name: str = "llama2"):
