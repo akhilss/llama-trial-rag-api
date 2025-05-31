@@ -6,64 +6,117 @@ from langchain_community.llms import Ollama
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
+import glob
+import pandas as pd
 
-class RAGService:
+class DocumentManager:
     def __init__(self, base_url: str = "http://localhost:11434", model_name: str = "llama2"):
-        """Initialize the RAG service with Ollama configuration."""
+        """Initialize the document manager with Ollama configuration."""
         self.base_url = base_url
         self.model_name = model_name
-        
-        # Initialize Ollama components
         self.embeddings = OllamaEmbeddings(base_url=self.base_url, model=self.model_name)
-        self.llm = Ollama(base_url=self.base_url, model=self.model_name)
-        
-        # Initialize RAG components
         self.vector_store = None
-        self.qa_chain = None
-        
+
+    def _load_csv_with_all_columns(self, file_path: str) -> List[Dict]:
+        """Load CSV file and combine all columns into a single text field."""
+        try:
+            df = pd.read_csv(file_path)
+            df['combined_text'] = df.apply(
+                lambda row: ' '.join(f"{col}: {str(val)}" for col, val in row.items()),
+                axis=1
+            )
+            
+            documents = []
+            for _, row in df.iterrows():
+                metadata = {col: str(val) for col, val in row.items() if col != 'combined_text'}
+                metadata['source'] = file_path
+                documents.append({
+                    'page_content': row['combined_text'],
+                    'metadata': metadata
+                })
+            
+            return documents
+        except Exception as e:
+            raise Exception(f"Error loading CSV file {file_path}: {str(e)}")
+
     def load_documents(self, directory: str = "documents") -> Dict[str, Any]:
         """Load documents from a directory and create embeddings."""
         try:
-            # Load documents
-            loader = DirectoryLoader(directory, glob="**/*.txt", loader_cls=TextLoader)
-            documents = loader.load()
+            # Load text documents
+            text_loader = DirectoryLoader(
+                directory,
+                glob="**/*.txt",
+                loader_cls=TextLoader
+            )
+            text_documents = text_loader.load()
+            
+            # Load CSV documents
+            csv_files = glob.glob(os.path.join(directory, "**/*.csv"), recursive=True)
+            csv_documents = []
+            for csv_file in csv_files:
+                csv_documents.extend(self._load_csv_with_all_columns(csv_file))
+            
+            # Combine all documents
+            all_documents = text_documents + csv_documents
+            
+            if not all_documents:
+                raise Exception(f"No documents found in {directory}")
             
             # Split documents
             text_splitter = RecursiveCharacterTextSplitter(
                 chunk_size=1000,
                 chunk_overlap=200
             )
-            splits = text_splitter.split_documents(documents)
+            splits = text_splitter.split_documents(all_documents)
             
-            # Create vector store
+            # Create vector store in memory
             self.vector_store = Chroma.from_documents(
                 documents=splits,
-                embedding=self.embeddings,
-                persist_directory="./chroma_db"
+                embedding=self.embeddings
             )
             
-            # Create QA chain
-            self.qa_chain = RetrievalQA.from_chain_type(
-                llm=self.llm,
-                chain_type="stuff",
-                retriever=self.vector_store.as_retriever(search_kwargs={"k": 3})
-            )
-            
-            return {"message": f"Successfully loaded {len(documents)} documents"}
+            return {
+                "message": f"Successfully loaded {len(text_documents)} text documents and {len(csv_documents)} CSV documents"
+            }
         except Exception as e:
             raise Exception(f"Error loading documents: {str(e)}")
-    
+
+    def clear_documents(self) -> Dict[str, str]:
+        """Clear the vector store."""
+        self.vector_store = None
+        return {"message": "Vector store cleared successfully"}
+
+class RAGService:
+    def __init__(self, document_manager: DocumentManager, base_url: str = "http://localhost:11434", model_name: str = "llama2"):
+        """Initialize the RAG service with document manager and Ollama configuration."""
+        self.document_manager = document_manager
+        self.base_url = base_url
+        self.model_name = model_name
+        self.llm = Ollama(base_url=self.base_url, model=self.model_name)
+        self.qa_chain = None
+
+    def _initialize_qa_chain(self):
+        """Initialize the QA chain with the current vector store."""
+        if not self.document_manager.vector_store:
+            raise Exception("Please load documents first using document_manager.load_documents()")
+        
+        self.qa_chain = RetrievalQA.from_chain_type(
+            llm=self.llm,
+            chain_type="stuff",
+            retriever=self.document_manager.vector_store.as_retriever(search_kwargs={"k": 3})
+        )
+
     def query(self, query_text: str) -> Dict[str, Any]:
         """Query the RAG system with the given text."""
         if not self.qa_chain:
-            raise Exception("Please load documents first using load_documents()")
+            self._initialize_qa_chain()
         
         try:
             # Get response from QA chain
             result = self.qa_chain({"query": query_text})
             
             # Get source documents
-            docs = self.vector_store.similarity_search(query_text, k=3)
+            docs = self.document_manager.vector_store.similarity_search(query_text, k=3)
             sources = [doc.metadata.get("source", "Unknown") for doc in docs]
             
             return {
