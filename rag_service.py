@@ -3,7 +3,7 @@ import os
 from typing import List, Dict, Any
 from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_ollama import Ollama
+from langchain_ollama import OllamaLLM
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
@@ -96,7 +96,7 @@ class RAGService:
         self.document_manager = document_manager
         self.base_url = base_url
         self.model_name = model_name
-        self.llm = Ollama(base_url=self.base_url, model=self.model_name)
+        self.llm = OllamaLLM(base_url=self.base_url, model=self.model_name)
         self.qa_chain = None
 
     def _initialize_qa_chain(self):
