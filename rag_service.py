@@ -1,8 +1,9 @@
+import logging
 import os
 from typing import List, Dict, Any
-from langchain_community.embeddings import OllamaEmbeddings
+from langchain_ollama import OllamaEmbeddings
 from langchain_community.vectorstores import Chroma
-from langchain_community.llms import Ollama
+from langchain_ollama import Ollama
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
 from langchain_community.document_loaders import DirectoryLoader, TextLoader
@@ -16,6 +17,8 @@ class DocumentManager:
         self.model_name = model_name
         self.embeddings = OllamaEmbeddings(base_url=self.base_url, model=self.model_name)
         self.vector_store = None
+        logging.basicConfig(level=logging.DEBUG)
+        logging.debug(f"DocumentManager initialized with base_url: {self.base_url} and model_name: {self.model_name}")
 
     def _load_csv_with_all_columns(self, file_path: str) -> List[Dict]:
         """Load CSV file and combine all columns into a single text field."""
@@ -79,6 +82,7 @@ class DocumentManager:
                 "message": f"Successfully loaded {len(text_documents)} text documents and {len(csv_documents)} CSV documents"
             }
         except Exception as e:
+            logging.exception("Error loading documents")
             raise Exception(f"Error loading documents: {str(e)}")
 
     def clear_documents(self) -> Dict[str, str]:

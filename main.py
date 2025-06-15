@@ -1,3 +1,5 @@
+import logging
+import traceback
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
 from typing import List, Optional
@@ -11,6 +13,7 @@ OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 MODEL_NAME = os.getenv("MODEL_NAME", "llama2")
 document_manager = DocumentManager(base_url=OLLAMA_BASE_URL, model_name=MODEL_NAME)
 rag_service = RAGService(document_manager=document_manager, base_url=OLLAMA_BASE_URL, model_name=MODEL_NAME)
+logging.basicConfig(level=logging.DEBUG)
 
 class Query(BaseModel):
     text: str
