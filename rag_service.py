@@ -6,7 +6,7 @@ from langchain_community.vectorstores import Chroma
 from langchain_ollama import OllamaLLM
 from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.chains import RetrievalQA
-from langchain_community.document_loaders import DirectoryLoader, TextLoader
+from langchain_community.document_loaders import DirectoryLoader, TextLoader, CSVLoader
 import glob
 import pandas as pd
 
@@ -20,28 +20,6 @@ class DocumentManager:
         logging.basicConfig(level=logging.DEBUG)
         logging.debug(f"DocumentManager initialized with base_url: {self.base_url} and model_name: {self.model_name}")
 
-    def _load_csv_with_all_columns(self, file_path: str) -> List[Dict]:
-        """Load CSV file and combine all columns into a single text field."""
-        try:
-            df = pd.read_csv(file_path)
-            df['combined_text'] = df.apply(
-                lambda row: ' '.join(f"{col}: {str(val)}" for col, val in row.items()),
-                axis=1
-            )
-            
-            documents = []
-            for _, row in df.iterrows():
-                metadata = {col: str(val) for col, val in row.items() if col != 'combined_text'}
-                metadata['source'] = file_path
-                documents.append({
-                    'page_content': row['combined_text'],
-                    'metadata': metadata
-                })
-            
-            return documents
-        except Exception as e:
-            raise Exception(f"Error loading CSV file {file_path}: {str(e)}")
-
     def load_documents(self, directory: str = "documents") -> Dict[str, Any]:
         """Load documents from a directory and create embeddings."""
         try:
@@ -54,11 +32,13 @@ class DocumentManager:
             text_documents = text_loader.load()
             
             # Load CSV documents
-            csv_files = glob.glob(os.path.join(directory, "**/*.csv"), recursive=True)
-            csv_documents = []
-            for csv_file in csv_files:
-                csv_documents.extend(self._load_csv_with_all_columns(csv_file))
-            
+            csv_loader = DirectoryLoader(
+                directory,
+                glob="**/*.csv",
+                loader_cls=CSVLoader
+            )
+            csv_documents = csv_loader.load()
+
             # Combine all documents
             all_documents = text_documents + csv_documents
             
